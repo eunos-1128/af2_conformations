@@ -1,7 +1,9 @@
-import os
+import sys
 import numpy as np
 
 from typing import Dict, List, NoReturn
+
+# sys.path.append("../alphafold")
 
 from alphafold.data import pipeline
 from alphafold.data import templates
@@ -9,7 +11,6 @@ from alphafold.data.tools import hhsearch
 
 
 def mk_mock_template(seq: str) -> dict:
-
     r"""Generates mock templates that will not influence prediction
     Taken from ColabFold version 62d7558c91a9809712b022faf9d91d8b183c328c
 
@@ -50,7 +51,6 @@ def mk_mock_template(seq: str) -> dict:
 
 
 def mk_template(seq: str, a3m_lines=str, path=str) -> dict:
-
     r"""Parses templates into features
 
     Parameters
@@ -83,7 +83,6 @@ def mk_template(seq: str, a3m_lines=str, path=str) -> dict:
 
 
 def setup_features(seq: str, a3m_lines: list, tfeatures_in: dict) -> dict:
-
     r"""Set up features for alphafold
 
     Parameters
@@ -179,22 +178,21 @@ def plddt_to_bfactor(filename: str, maxval: float = 100.0) -> NoReturn:
     pdbio.set_structure(pdb)
     pdbio.save(filename)
 
-def pdb2str( pdbfile: str ) -> str:
 
-  r""" Converts PDB file to string
+def pdb2str(pdbfile: str) -> str:
+    r"""Converts PDB file to string
 
-  Credit to Sergey Ovchinnikov for writing this
+    Credit to Sergey Ovchinnikov for writing this
 
-  Args:
-    pdbfile: String with PDB file to convert
+    Args:
+      pdbfile: String with PDB file to convert
 
-  Output:
-    String
+    Output:
+      String
 
-  """
-  lines = []
-  for line in open( pdbfile, "r" ):
-    if line[ :4 ] == "ATOM":
-      lines.append( line )
-  return "".join( lines )
-
+    """
+    lines = []
+    for line in open(pdbfile, "r"):
+        if line[:4] == "ATOM":
+            lines.append(line)
+    return "".join(lines)

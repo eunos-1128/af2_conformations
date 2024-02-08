@@ -1,20 +1,21 @@
-from . import util
 import os
-import numpy as np
 import random
 import sys
 
-import alphafold
-from alphafold.common import protein
-from alphafold.model import data
-from alphafold.model import config
-from alphafold.model import model
+import numpy as np
+
+from . import util
+
+# sys.path.append("../alphafold")
 
 from typing import Any, List, Mapping, NoReturn
 
-from absl import logging
-import jax.numpy as jnp
 import jax
+import jax.numpy as jnp
+from absl import logging
+from alphafold.common import protein
+from alphafold.model import config, data, model
+
 
 def set_config(
     use_templates: bool,
@@ -27,7 +28,6 @@ def set_config(
     monomer: bool = True,
     model_params: int = 0,
 ) -> model.RunModel:
-
     r"""Generated Runner object for AlphaFold
 
     Parameters
@@ -99,17 +99,11 @@ def set_config(
     logging.debug("Prediction parameters:")
     logging.debug("\tModel ID: {}".format(model_id))
     logging.debug("\tUsing templates: {}".format(t))
+    logging.debug("\tMaximum MSA clusters: {}".format(cfg.data.eval.max_msa_clusters))
     logging.debug(
-        "\tMaximum MSA clusters: {}".format(cfg.data.eval.max_msa_clusters)
+        "\tMaximum extra MSA clusters: {}".format(cfg.data.common.max_extra_msa)
     )
-    logging.debug(
-        "\tMaximum extra MSA clusters: {}".format(
-            cfg.data.common.max_extra_msa
-        )
-    )
-    logging.debug(
-        "\tNumber recycling iterations: {}".format(cfg.model.num_recycle)
-    )
+    logging.debug("\tNumber recycling iterations: {}".format(cfg.model.num_recycle))
     logging.debug(
         "\tNumber of structure module repeats: {}".format(
             cfg.model.heads.structure_module.num_layer
@@ -163,7 +157,6 @@ def predict_structure_from_templates(
     max_recycles: int = 3,
     n_struct_module_repeats: int = 8,
 ) -> NoReturn:
-
     r"""Predicts the structure.
 
     Parameters
@@ -232,7 +225,6 @@ def predict_structure_no_templates(
     max_recycles: int = 3,
     n_struct_module_repeats: int = 8,
 ) -> NoReturn:
-
     r"""Predicts the structure.
 
     Parameters
@@ -282,6 +274,7 @@ def predict_structure_no_templates(
 
     return result
 
+
 def predict_structure_from_custom_template(
     seq: str,
     outname: str,
@@ -294,77 +287,76 @@ def predict_structure_from_custom_template(
     max_extra_msa: int = -1,
     max_recycles: int = 3,
     n_struct_module_repeats: int = 8,
-  ):
+):
+    f"""Predicts the structure.
+      Parameters
+      ----------
+      seq : Sequence
+      outname : Name of output PDB
+      a3m_lines : String of entire alignment
+      template_pdb : name of the PDB file with path in case it's not in the local folder
+      model_id : Which AF2 model to run (must be 1 or 2 for templates)
+      model_params : Which parameters to provide to AF2 model
+      random_seed : Random seed
+      max_msa_clusters : Number of sequences to use
+      max_extra_msa : Number of extra seqs for summary stats
+      max_recycles : Number of iterations through AF2
+      n_struct_module_repeats : Number of passes through structural refinement
 
-  f""" Predicts the structure.
-    Parameters
-    ----------
-    seq : Sequence
-    outname : Name of output PDB
-    a3m_lines : String of entire alignment
-    template_pdb : name of the PDB file with path in case it's not in the local folder
-    model_id : Which AF2 model to run (must be 1 or 2 for templates)
-    model_params : Which parameters to provide to AF2 model
-    random_seed : Random seed
-    max_msa_clusters : Number of sequences to use
-    max_extra_msa : Number of extra seqs for summary stats
-    max_recycles : Number of iterations through AF2
-    n_struct_module_repeats : Number of passes through structural refinement
 
+    Output:
+      None
+    """
 
-  Output:
-    None
-  """
+    if random_seed == -1:
+        random_seed = random.randrange(sys.maxsize)
 
-  if random_seed == -1:
-      random_seed = random.randrange(sys.maxsize)  
+    if model_id not in (1, 2):
+        model_id = random.randint(1, 2)
 
-  if model_id not in (1, 2):
-      model_id = random.randint(1, 2)
+    if model_params not in (1, 2):
+        model_params = random.randint(1, 2)
 
-  if model_params not in (1, 2):
-      model_params = random.randint(1, 2)          
+    print("Prediction parameters:")
+    print(f"\tTemplate: { template_pdb }")
+    print(f"\tMaximum number of MSA clusters: { max_msa_clusters }")
+    print(f"\tMaximum number of extra MSA clusters: { max_extra_msa }")
+    print(f"\tMaximum number of recycling iterations: { max_recycles }")
 
-  print( "Prediction parameters:" )
-  print( f"\tTemplate: { template_pdb }" )
-  print( f"\tMaximum number of MSA clusters: { max_msa_clusters }" )
-  print( f"\tMaximum number of extra MSA clusters: { max_extra_msa }" )
-  print( f"\tMaximum number of recycling iterations: { max_recycles }" )
+    pdb = protein.from_pdb_string(util.pdb2str(template_pdb))
 
-  pdb = protein.from_pdb_string( util.pdb2str( template_pdb ) )
+    tfeatures_in = {
+        "template_aatype": jax.nn.one_hot(pdb.aatype, 22)[:][None],
+        "template_all_atom_masks": pdb.atom_mask[:][None],
+        "template_all_atom_positions": pdb.atom_positions[:][None],
+        "template_domain_names": np.asarray(["None"]),
+    }
 
-  tfeatures_in = {
-    "template_aatype" : jax.nn.one_hot( pdb.aatype, 22 )[ : ][ None ],
-    "template_all_atom_masks" : pdb.atom_mask[ : ][ None ],
-    "template_all_atom_positions" : pdb.atom_positions[ :][ None ],
-    "template_domain_names" : np.asarray( [ "None" ] ) }
+    # Assemble the dictionary of input features
+    features_in = util.setup_features(seq, a3m_lines, tfeatures_in)
 
-  # Assemble the dictionary of input features
-  features_in = util.setup_features(
-      seq, a3m_lines, tfeatures_in)
+    # Run the models
+    model_runner = set_config(
+        True,
+        max_msa_clusters,
+        max_extra_msa,
+        max_recycles,
+        model_id,
+        n_struct_module_repeats,
+        len(features_in["msa"]),
+        model_params=model_params,
+    )
 
-  # Run the models
-  model_runner = set_config(
-      True,
-      max_msa_clusters,
-      max_extra_msa,
-      max_recycles,
-      model_id,
-      n_struct_module_repeats,
-      len(features_in["msa"]),
-      model_params=model_params,
-  )
+    result = run_one_job(model_runner, features_in, random_seed, outname)
 
-  result = run_one_job(model_runner, features_in, random_seed, outname)
+    del model_runner
 
-  del model_runner
+    return result
 
-  return result
 
 def to_pdb(
     outname, pred, plddts, res_idx  # type unknown but check?  # type unknown but check?
 ) -> NoReturn:
-
     r"""Writes unrelaxed PDB to file
 
     Parameters
@@ -383,7 +375,11 @@ def to_pdb(
     with open(outname, "w") as outfile:
         outfile.write(protein.to_pdb(pred))
 
-    with open(f"b_{ outname }", "w") as outfile:
+    # ファイル名の取得
+    filename = os.path.basename(outname)
+    dirpath = os.path.dirname(outname)
+
+    with open(f"{ dirpath }/b_{ filename }", "w") as outfile:
         for line in open(outname, "r").readlines():
             if line[0:6] == "ATOM  ":
                 seq_id = int(line[22:26].strip()) - 1
@@ -394,4 +390,4 @@ def to_pdb(
                     )
                 )
 
-    os.rename(f"b_{ outname }", outname)
+    os.rename(f"{ dirpath }/b_{ filename }", outname)
